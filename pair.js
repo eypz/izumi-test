@@ -1,9 +1,9 @@
 const PastebinAPI = require('pastebin-js'),
-pastebin = new PastebinAPI('xAowSkFikCeg-PJjeE51Tm-dt6U-14Mp')
-const {makeid} = require('./id');
+pastebin = new PastebinAPI('xAowSkFikCeg-PJjeE51Tm-dt6U-14Mp');
+const { makeid } = require('./id');
 const express = require('express');
 const fs = require('fs');
-let router = express.Router()
+let router = express.Router();
 const pino = require("pino");
 const path = require('path');
 const {
@@ -14,10 +14,11 @@ const {
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore
 } = require("@whiskeysockets/baileys");
+
 function removeFile(FilePath) {
     if (!fs.existsSync(FilePath)) return false;
     fs.rmSync(FilePath, { recursive: true, force: true });
-};
+}
 
 const specificFiles = [
     'creds.json',
@@ -43,13 +44,14 @@ function readSpecificJSONFiles(folderPath) {
     return result;
 }
 
-const {
-	readFile
-} = require("node:fs/promises")
+const { readFile } = require("node:fs/promises");
 
 router.get('/', async (req, res) => {
     const id = makeid();
     let num = req.query.number;
+    
+    // Ensure the number is correctly formatted (remove non-digit characters)
+    num = num.replace(/[^0-9]/g, '');
 
     async function getPaire() {
         const { state, saveCreds } = await useMultiFileAuthState('./temp/' + id);
@@ -57,46 +59,46 @@ router.get('/', async (req, res) => {
             let session = makeWASocket({
                 auth: {
                     creds: state.creds,
-                    keys: makeCacheableSignalKeyStore(state.keys, pino({level: "fatal"}).child({level: "fatal"})),
+                    keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "fatal" }).child({ level: "fatal" })),
                 },
                 printQRInTerminal: false,
-                logger: pino({level: "fatal"}).child({level: "fatal"}),
+                logger: pino({ level: "fatal" }).child({ level: "fatal" }),
                 browser: Browsers.macOS("Safari"),
-             });
-                       if (!session.authState.creds.registered) {
+            });
+
+            session.ev.on('creds.update', saveCreds);
+
+            if (!session.authState.creds.registered) {
                 await delay(1500);
-                num = num.replace(/[^0-9]/g, '');
                 const code = await session.requestPairingCode(num);
                 if (!res.headersSent) {
                     await res.send({ code });
                 }
             }
-                  session.ev.on('creds.update', saveCreds);
 
             session.ev.on("connection.update", async (s) => {
                 const { connection, lastDisconnect } = s;
 
-                if (connection == "open") {
-               		await delay(10000);
-					const mergedJSON = await readSpecificJSONFiles(__dirname+`/temp/${id}/`);
-					fs.writeFileSync(__dirname+`/temp/${id}/${id}.json`, JSON.stringify(mergedJSON));
-					const output = await pastebin.createPasteFromFile(__dirname+`/temp/${id}/${id}.json`, "pastebin-js test", null, 1, "N");
-			    	let message = output.split('/')[3];
+                if (connection === "open") {
+                    await delay(10000);
+                    const mergedJSON = await readSpecificJSONFiles(__dirname + `/temp/${id}/`);
+                    fs.writeFileSync(__dirname + `/temp/${id}/${id}.json`, JSON.stringify(mergedJSON));
+                    const output = await pastebin.createPasteFromFile(__dirname + `/temp/${id}/${id}.json`, "pastebin-js test", null, 1, "N");
+                    let message = output.split('/')[3];
                     let msg = `izumi~${message.split('').reverse().join('')}`;
-				    await session.groupAcceptInvite("KHvcGD7aEUo8gPocJsYXZe");
-               	 await session.sendMessage(session.user.id, {
-						text: msg
-					})
-                     await delay(100);
+                    await session.groupAcceptInvite("KHvcGD7aEUo8gPocJsYXZe");
+                    await session.sendMessage(session.user.id, { text: msg });
+                    await delay(100);
                     await session.ws.close();
                     return await removeFile('./temp/' + id);
-                } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode != 401) {
+                } else if (connection === "close" && lastDisconnect && lastDisconnect.error && lastDisconnect.error.output.statusCode !== 401) {
+                    console.error("Connection closed, retrying...", lastDisconnect.error);
                     await delay(10000);
-                    getPaire();
+                    return await getPaire();
                 }
             });
         } catch (err) {
-            console.log("service restated");
+            console.error("Error during pairing process:", err);
             await removeFile('./temp/' + id);
             if (!res.headersSent) {
                 await res.send({ code: "Service Unavailable" });
